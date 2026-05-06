@@ -9,6 +9,7 @@ function App(){
   const [priorityNotifications,setPriorityNotifications]=useState([]);
   const [studentId,setStudentId]=useState('1042');
   const [loading,setLoading]=useState(false);
+  const [filter,setFilter]=useState('all');
 
   useEffect(()=>{
     fetchNotifications();
@@ -56,10 +57,25 @@ function App(){
     }
   };
 
+  const filteredNotifications=notifications.filter(notif=>{
+
+    if(filter==='all'){
+      return true;
+    }
+
+    if(filter==='unread'){
+      return !notif.is_read;
+    }
+
+    return notif.type===filter;
+  });
+
   return(
+
     <div className="App">
 
       <header>
+
         <h1>Campus Notifications</h1>
 
         <input
@@ -68,6 +84,7 @@ function App(){
           onChange={(e)=>setStudentId(e.target.value)}
           placeholder="Student ID"
         />
+
       </header>
 
       <div className="container">
@@ -137,9 +154,33 @@ function App(){
 
           <h2>All Notifications</h2>
 
+          <div className="filters">
+
+            <button onClick={()=>setFilter('all')}>
+              All
+            </button>
+
+            <button onClick={()=>setFilter('unread')}>
+              Unread
+            </button>
+
+            <button onClick={()=>setFilter('Placement')}>
+              Placement
+            </button>
+
+            <button onClick={()=>setFilter('Result')}>
+              Result
+            </button>
+
+            <button onClick={()=>setFilter('Event')}>
+              Event
+            </button>
+
+          </div>
+
           <div className="notification-list">
 
-            {notifications.map(notif=>(
+            {filteredNotifications.map(notif=>(
 
               <div
                 key={notif.id}
