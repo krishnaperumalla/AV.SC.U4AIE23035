@@ -16,11 +16,13 @@ const pool=new Pool({
   database:'notifications',
   user:'postgres',
   password:process.env.DB_PASSWORD,
-  port:5432
+  port:5433
 });
-
+console.log(process.env.DB_PASSWORD);
 app.post('/api/notifications',async(req,res)=>{
+
   try{
+
     const {student_id,message}=req.body;
 
     const result=await pool.query(
@@ -39,15 +41,19 @@ app.post('/api/notifications',async(req,res)=>{
 
   }catch(error){
 
+    console.log(error);
+
     logger.error('Create notification failed');
 
     res.status(500).json({
       error:'Server error'
     });
   }
+
 });
 
 app.get('/api/notifications',async(req,res)=>{
+
   try{
 
     const {student_id}=req.query;
@@ -61,9 +67,13 @@ app.get('/api/notifications',async(req,res)=>{
       [student_id]
     );
 
-    res.json(result.rows);
+    res.json({
+      data:result.rows
+    });
 
   }catch(error){
+
+    console.log(error);
 
     logger.error('Fetch notification failed');
 
@@ -71,9 +81,11 @@ app.get('/api/notifications',async(req,res)=>{
       error:'Server error'
     });
   }
+
 });
 
 app.patch('/api/notifications/:id/read',async(req,res)=>{
+
   try{
 
     const {id}=req.params;
@@ -91,12 +103,15 @@ app.patch('/api/notifications/:id/read',async(req,res)=>{
 
   }catch(error){
 
+    console.log(error);
+
     logger.error('Update failed');
 
     res.status(500).json({
       error:'Server error'
     });
   }
+
 });
 
 const PORT=3000;

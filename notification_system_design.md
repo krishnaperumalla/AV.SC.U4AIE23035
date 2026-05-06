@@ -330,3 +330,60 @@ queue.process(10, async (job) => {
 - Failed jobs can retry automatically
 
 ---
+
+# Stage 6: Priority Inbox Implementation
+
+## Algorithm Explanation
+
+The priority algorithm scores notifications based on:
+
+1. **Type Weight** (0-50 points):
+   - Placement: 50 points
+   - Result: 30 points
+   - Event: 10 points
+
+2. **Recency Score** (0-30 points):
+   - < 24 hours: 30 points
+   - < 72 hours: 20 points
+   - < 1 week: 10 points
+   - Older: 0 points
+
+**Total Score Range**: 0-80 points
+
+## Top 10 Selection
+
+Notifications are sorted by score (highest first) and top 10 are displayed.
+
+## Maintenance Strategy
+
+To keep top 10 efficient:
+- Pre-compute priority scores in database
+- Use materialized view for top notifications
+- Update scores via scheduled job every 15 minutes
+- Cache top 10 per student in Redis
+
+```sql
+CREATE MATERIALIZED VIEW top_priority_notifications AS
+SELECT 
+  n.*,
+  (CASE type 
+    WHEN 'Placement' THEN 50
+    WHEN 'Result' THEN 30
+    WHEN 'Event' THEN 10
+  END +
+  CASE 
+    WHEN age(NOW(), timestamp) < INTERVAL '24 hours' THEN 30
+    WHEN age(NOW(), timestamp) < INTERVAL '72 hours' THEN 20
+    WHEN age(NOW(), timestamp) < INTERVAL '1 week' THEN 10
+    ELSE 0
+  END) as priority_score
+FROM notifications n
+WHERE is_read = false;
+
+CREATE INDEX ON top_priority_notifications(student_id, priority_score DESC);
+```
+
+Refresh every 15 minutes:
+```sql
+REFRESH MATERIALIZED VIEW CONCURRENTLY top_priority_notifications;
+```
