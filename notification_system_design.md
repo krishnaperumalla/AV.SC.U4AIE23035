@@ -1,5 +1,7 @@
 # Notification System Design
 
+# Stage 1: REST API Design
+
 ## API Endpoints
 
 ---
@@ -14,32 +16,37 @@
 {
   "studentID": 1042,
   "type": "Result",
-  "message": "Your exam results are available"
+  "message": "Your exam results are available",
+  "timestamp": "2024-05-06T10:30:00Z"
 }
 ```
 
 ### Response
 
-```http
-201 Created
+```json
+{
+  "id": "notif_123",
+  "message": "Created successfully"
+}
 ```
 
 ---
 
-## 2. Get My Notifications
+## 2. Get Notifications
 
-**GET** `/api/notifications?studentID=1042`
+**GET** `/api/notifications?studentID=1042&isRead=false`
 
 ### Response
 
 ```json
 [
   {
-    "id": "123",
+    "id": "notif_123",
+    "studentID": 1042,
     "type": "Result",
     "message": "Your exam results are available",
-    "time": "2024-05-06 10:30 AM",
-    "read": false
+    "timestamp": "2024-05-06T10:30:00Z",
+    "isRead": false
   }
 ]
 ```
@@ -48,19 +55,21 @@
 
 ## 3. Mark as Read
 
-**PATCH** `/api/notifications/123/read`
+**PATCH** `/api/notifications/:id/read`
 
 ### Response
 
-```http
-200 OK
+```json
+{
+  "message": "Marked as read"
+}
 ```
 
 ---
 
 ## 4. Delete Notification
 
-**DELETE** `/api/notifications/123`
+**DELETE** `/api/notifications/:id`
 
 ### Response
 
@@ -70,58 +79,139 @@
 
 ---
 
-# Database (PostgreSQL)
+# JSON Schema
 
-## Table: notifications
+```json
+{
+  "id": "string",
+  "studentID": "number",
+  "type": "Event | Result | Placement",
+  "message": "string",
+  "timestamp": "ISO date string",
+  "isRead": "boolean"
+}
+```
+
+---
+
+# Stage 2: Database Design
+
+## Database Choice: PostgreSQL
+
+### Why PostgreSQL?
+
+- Good for complex queries
+- Handles large amounts of data efficiently
+- Supports indexing for faster searching
+
+---
+
+## Database Schema
 
 ```sql
-CREATE TABLE notifications (
-  id SERIAL PRIMARY KEY,
-  student_id INT NOT NULL,
-  type VARCHAR(50),
-  message TEXT,
-  timestamp TIMESTAMP DEFAULT NOW(),
-  is_read BOOLEAN DEFAULT false
+create table notifications (
+  id uuid primary key,
+  student_id integer not null,
+  type varchar(50) check (type in ('Event', 'Result', 'Placement')),
+  message text not null,
+  timestamp timestamp not null,
+  is_read boolean default false
 );
 
--- Speed up queries
-CREATE INDEX ON notifications(student_id);
-CREATE INDEX ON notifications(student_id, is_read);
+create index idx_student_id
+on notifications(student_id);
+
+create index idx_timestamp
+on notifications(timestamp desc);
+
+create index idx_unread
+on notifications(student_id, is_read);
 ```
 
 ---
 
-# Common Problems & Solutions
+# Problems & Solutions
 
-## Problem 1: Too many old notifications
+## Problem 1: Database Size Increases
 
-- Delete notifications older than 3 months automatically
+### Solution
 
----
-
-## Problem 2: Slow when many students
-
-- Add indexes (already done above)
-- Show only 20 notifications at a time
+- Delete notifications older than 90 days automatically
 
 ---
 
-## Problem 3: Many notifications sent at once
+## Problem 2: Slow Queries with Large Data
 
-- Insert multiple notifications together instead of one-by-one
+### Solution
 
----
+- Use indexes on frequently searched columns
+- Use pagination with `limit`
 
-# Example Query
+Example:
 
 ```sql
--- Get unread notifications for a student
-SELECT * FROM notifications
-WHERE student_id = 1042
-  AND is_read = false
-ORDER BY timestamp DESC
-LIMIT 20;
+limit 20;
 ```
 
 ---
 
+## Problem 3: Too Many Writes at Once
+
+### Solution
+
+- Use batch inserts instead of inserting one row at a time
+
+---
+
+# Stage 3: Query Optimization
+
+## Original Query
+
+```sql
+select *
+from notifications
+where student_id = 1042
+  and is_read = false
+order by timestamp asc;
+```
+
+---
+
+## Problems in Original Query
+
+- `select *` fetches unnecessary columns
+- `asc` shows oldest notifications first
+- No `limit` can return too many rows
+
+---
+
+## Optimized Query
+
+```sql
+select id, type, message, timestamp
+from notifications
+where student_id = 1042
+  and is_read = false
+order by timestamp desc
+limit 50;
+```
+
+---
+
+## Why the Optimized Query is Better
+
+- Fetches only required columns
+- Shows latest notifications first
+- Limits returned rows for better performance
+
+---
+
+# Find Recent Placement Notifications
+
+```sql
+select student_id, message, timestamp
+from notifications
+where type = 'Placement'
+  and timestamp >= now() - interval '7 days'
+order by timestamp desc;
+```
