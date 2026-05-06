@@ -280,3 +280,53 @@ const pool = new Pool({
 - Before: 3–5 seconds per request
 - After: 150–300 ms per request
 - Can handle 50,000 users efficiently
+
+# Stage 5: Bulk Notification Analysis
+
+## Bad Implementation
+
+javascript
+function notify_all(student_ids, message) {
+  for (student_id of student_ids) {
+    send_email(student_id, message);
+    save_to_db(student_id, message);
+  }
+}
+
+
+## Problems
+
+- Sending notifications one-by-one is very slow
+- 50,000 students can take several hours
+- If the process stops midway, some students may not receive notifications
+
+---
+
+# Better Implementation
+
+javascript
+const queue = new Queue('notifications');
+
+function notify_all(student_ids, message) {
+  student_ids.forEach(id => {
+    queue.add({
+      student_id: id,
+      message
+    });
+  });
+}
+
+queue.process(10, async (job) => {
+  await send_email(job.student_id, job.message);
+  await save_to_db(job.student_id, job.message);
+});
+
+
+## Benefits
+
+- Non-blocking execution
+- Multiple notifications processed together
+- Faster delivery
+- Failed jobs can retry automatically
+
+---
