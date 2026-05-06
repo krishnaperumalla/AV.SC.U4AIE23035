@@ -215,3 +215,68 @@ where type = 'Placement'
   and timestamp >= now() - interval '7 days'
 order by timestamp desc;
 ```
+
+# Stage 4: Performance Optimization
+
+## Problem
+
+When 50,000 students check notifications at the same time:
+
+- Database gets overloaded
+- Each request takes 3–5 seconds
+- System becomes slow
+
+---
+
+# Solution 1: Caching with Redis
+
+```javascript
+const cached = await redis.get(`notifications:${studentId}`);
+
+if (cached) {
+  return cached;
+}
+
+const notifications = await db.query(...);
+
+await redis.set(
+  `notifications:${studentId}`,
+  JSON.stringify(notifications),
+  "EX",
+  300
+);
+```
+
+---
+
+# Solution 2: Pagination
+
+```javascript
+const page = 1;
+const limit = 20;
+const offset = (page - 1) * limit;
+```
+
+```sql
+select *
+from notifications
+limit 20 offset 0;
+```
+
+---
+
+# Solution 3: Database Connection Pooling
+
+```javascript
+const pool = new Pool({
+  max: 50
+});
+```
+
+---
+
+# Results
+
+- Before: 3–5 seconds per request
+- After: 150–300 ms per request
+- Can handle 50,000 users efficiently
