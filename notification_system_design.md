@@ -331,59 +331,131 @@ queue.process(10, async (job) => {
 
 ---
 
-# Stage 6: Priority Inbox Implementation
+# Stage 5: Bulk Notification Analysis
 
-## Algorithm Explanation
+## Bad Implementation
 
-The priority algorithm scores notifications based on:
-
-1. **Type Weight** (0-50 points):
-   - Placement: 50 points
-   - Result: 30 points
-   - Event: 10 points
-
-2. **Recency Score** (0-30 points):
-   - < 24 hours: 30 points
-   - < 72 hours: 20 points
-   - < 1 week: 10 points
-   - Older: 0 points
-
-**Total Score Range**: 0-80 points
-
-## Top 10 Selection
-
-Notifications are sorted by score (highest first) and top 10 are displayed.
-
-## Maintenance Strategy
-
-To keep top 10 efficient:
-- Pre-compute priority scores in database
-- Use materialized view for top notifications
-- Update scores via scheduled job every 15 minutes
-- Cache top 10 per student in Redis
-
-```sql
-CREATE MATERIALIZED VIEW top_priority_notifications AS
-SELECT 
-  n.*,
-  (CASE type 
-    WHEN 'Placement' THEN 50
-    WHEN 'Result' THEN 30
-    WHEN 'Event' THEN 10
-  END +
-  CASE 
-    WHEN age(NOW(), timestamp) < INTERVAL '24 hours' THEN 30
-    WHEN age(NOW(), timestamp) < INTERVAL '72 hours' THEN 20
-    WHEN age(NOW(), timestamp) < INTERVAL '1 week' THEN 10
-    ELSE 0
-  END) as priority_score
-FROM notifications n
-WHERE is_read = false;
-
-CREATE INDEX ON top_priority_notifications(student_id, priority_score DESC);
+```javascript
+function notify_all(student_ids, message) {
+  for (student_id of student_ids) {
+    send_email(student_id, message);
+    save_to_db(student_id, message);
+  }
+}
 ```
 
-Refresh every 15 minutes:
-```sql
-REFRESH MATERIALIZED VIEW CONCURRENTLY top_priority_notifications;
+## Problems
+
+- Sending notifications one-by-one is very slow
+- 50,000 students can take several hours
+- If the process stops midway, some students may not receive notifications
+
+---
+
+# Better Implementation
+
+```javascript
+const queue = new Queue('notifications');
+
+function notify_all(student_ids, message) {
+  student_ids.forEach(id => {
+    queue.add({
+      student_id: id,
+      message
+    });
+  });
+}
+
+queue.process(10, async (job) => {
+  await send_email(job.student_id, job.message);
+  await save_to_db(job.student_id, job.message);
+});
 ```
+
+## Benefits
+
+- Non-blocking execution
+- Multiple notifications processed together
+- Faster delivery
+- Failed jobs can retry automatically
+
+---
+
+# Stage 6: Priority Inbox
+
+## Priority Calculation
+
+```javascript
+function calculatePriority(notification) {
+  let score = 0;
+
+  if (notification.type === 'Placement') score += 50;
+  else if (notification.type === 'Result') score += 30;
+  else if (notification.type === 'Event') score += 10;
+
+  const hoursOld =
+    (Date.now() - notification.timestamp) / 3600000;
+
+  if (hoursOld < 24) score += 30;
+  else if (hoursOld < 72) score += 20;
+  else if (hoursOld < 168) score += 10;
+
+  return score;
+}
+```
+
+## How It Works
+
+- Placement notifications get highest priority
+- Recent notifications get extra score
+- Notifications are sorted by score
+
+---
+
+# Store Priority Score in Database
+
+```sql
+alter table notifications
+add column priority_score integer;
+```
+
+```sql
+update notifications
+set priority_score =
+  (case
+    when type = 'Placement' then 50
+    when type = 'Result' then 30
+    else 10
+  end);
+```
+
+```sql
+select *
+from notifications
+where student_id = 1042
+order by priority_score desc
+limit 10;
+```
+
+---
+
+# Stage 7: Frontend Notes
+
+## Requirements
+
+- React or Next.js frontend
+- Responsive design for mobile devices
+- Notification filtering
+- Mark as read feature
+- Priority inbox support
+
+---
+
+## Main Features
+
+- Priority notifications section
+- All notifications list
+- Filter by type
+- Mark notifications as read
+- Different styles for notification types
+- Mobile-friendly layout
